@@ -6,19 +6,25 @@ mod console;
 pub(crate) mod logging;
 pub(crate) mod sync;
 pub(crate) mod batch;
+pub(crate) mod trap;
+pub(crate) mod syscall;
 
 use core::{arch::global_asm};
 
 global_asm!(include_str!("entry.asm"));
+global_asm!(include_str!("link_app.S"));
 
 #[unsafe(no_mangle)]
 pub fn rust_main() -> ! {
     clear_bss();
     logging::init();
-    info!("hello, rcore");
-    log_level(true);
+    info!("[kernel] hello, rcore");
+    log_level(false);
     log_sections();
-    panic!("shutdown");
+
+    trap::init();
+    batch::init();
+    batch::run_next_app();
 }
 
 #[inline(never)]
@@ -49,10 +55,10 @@ fn log_sections() {
         safe fn ebss();
     }
 
-    info!("text range: {:0x} - {:0x}", stext as usize, etext as usize);
-    info!("rodata range: {:0x} - {:0x}", srodata as usize, erodata as usize);
-    info!("data range: {:0x} - {:0x}", sdata as usize, edata as usize);
-    info!("bss range: {:0x} - {:0x}", sbss as usize, ebss as usize);
+    trace!("[kernel] .text range: {:0x} - {:0x}", stext as usize, etext as usize);
+    trace!("[kernel] .rodata range: {:0x} - {:0x}", srodata as usize, erodata as usize);
+    trace!("[kernel] .data range: {:0x} - {:0x}", sdata as usize, edata as usize);
+    trace!("[kernel] . bss range: {:0x} - {:0x}", sbss as usize, ebss as usize);
 }
 
 fn log_level(on: bool) {
