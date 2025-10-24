@@ -32,8 +32,8 @@ fn clear_bss() {
 
 use crate::syscall::{sys_exit, sys_write};
 
-pub fn write(fd: usize, buf: &str) -> isize {
-    sys_write(fd, buf.as_bytes())
+pub fn write(fd: usize, buf: &[u8]) -> isize {
+    sys_write(fd, buf)
 }
 
 pub fn exit(exit_code: i32) -> isize {

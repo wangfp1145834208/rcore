@@ -27,7 +27,7 @@ __all_traps:
     sd t0, 32*8(sp)
     sd t1, 33*8(sp)
     csrr t0, sscratch
-    SAVE_GP 2  # sp
+    sd t0, 2*8(sp)  # sp
     mv a0, sp
     call trap_handler
 

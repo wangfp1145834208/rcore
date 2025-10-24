@@ -11,7 +11,7 @@ const MOD: u32 = 10007;
 
 #[unsafe(no_mangle)]
 fn main() -> i32 {
-    let mut pow = [032; SIZE];
+    let mut pow = [0u32; SIZE];
     let mut index: usize = 0;
     pow[index] = 1;
     for i in 1..=STEP {
@@ -19,6 +19,7 @@ fn main() -> i32 {
         index = (index + 1) % SIZE;
         pow[index] = last * P % MOD;
         if i % 10000 == 0 {
+            // println!("power {}", i);
             println!("{}^{}={}(MOD {})", P, i, pow[index], MOD);
         }
     }
