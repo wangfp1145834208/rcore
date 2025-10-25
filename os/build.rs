@@ -32,8 +32,21 @@ _num_app:
 
     for i in 0..apps.len() {
         writeln!(f, r#"    .quad app_{}_start"#, i)?;
+        writeln!(f, r#"    .quad app_{}_name"#, i)?;
     }
     writeln!(f, r#"    .quad app_{}_end"#, apps.len() - 1)?;
+
+    writeln!(f, "")?;
+    for (i, app_name) in apps.iter().enumerate() {
+        writeln!(
+            f,
+            r#"    .global app_{0}_name
+app_{0}_name:
+    .byte {1}
+    .ascii "{2}""#,
+            i, app_name.len(), app_name
+        )?;
+    } 
 
     for (idx, app) in apps.iter().enumerate() {
         println!("app_{}: {}", idx, app);

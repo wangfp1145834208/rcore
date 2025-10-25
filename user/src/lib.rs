@@ -6,6 +6,8 @@ mod lang_items;
 pub mod console;
 mod syscall;
 
+pub use syscall::sys_task_info;
+
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text.entry")]
 pub extern "C" fn _start() -> ! {

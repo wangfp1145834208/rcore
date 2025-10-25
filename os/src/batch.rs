@@ -1,6 +1,6 @@
-use core::{arch::asm};
+use core::{arch::asm, cell::UnsafeCell, marker::PhantomData, mem::MaybeUninit};
 
-use crate::{info, sbi::shutdown, trap::context::TrapContext};
+use crate::{info, kernel, sbi::shutdown, trap::context::TrapContext};
 
 use super::sync::up::UPSafeCell;
 use lazy_static::*;
@@ -44,15 +44,33 @@ impl KernelStack {
 static USER_STACK: UserStack = UserStack{data: [0u8; USER_STACK_SIZE]};
 static KERNEL_STACK: KernelStack = KernelStack{data: [0u8; KERNAL_STACK_SIZE]};
 
+struct AppInfo {
+    start: usize,
+    end: usize,
+    name: &'static str,
+}
+
+impl AppInfo {
+    fn app_len(&self) -> usize {
+        self.end - self.start
+    }
+
+    fn app_src(&self) -> &'static [u8] {
+        unsafe {
+            core::slice::from_raw_parts(self.start as *const u8, self.app_len())        
+        }
+    }
+}
+
 struct AppManager {
     num_app: usize,
     current_app: usize,
-    app_start: [usize; MAX_APP_NUM + 1],  // 需要记录最后一个APP片段的结束
+    app_info: [MaybeUninit<AppInfo>; MAX_APP_NUM],
 }
 
 impl AppManager {
     fn load_app(&self, app_id: usize) {
-        if app_id > self.num_app {
+        if app_id >= self.num_app {
             info!("All applications completed!");
             shutdown(false);
         }
@@ -62,10 +80,9 @@ impl AppManager {
                 (pa as *mut usize).write_volatile(0);
             });
 
-            let app_length = self.app_start[app_id+1] - self.app_start[app_id];
-            let app_src = core::slice::from_raw_parts(self.app_start[app_id] as *const u8, app_length);
-            let app_dst = core::slice::from_raw_parts_mut(APP_BASE_ADDRESS as *mut u8, app_length);
-            app_dst.copy_from_slice(app_src);
+            let app_info = self.app_info[app_id].assume_init_ref();
+            let app_dst = core::slice::from_raw_parts_mut(APP_BASE_ADDRESS as *mut u8, app_info.app_len());
+            app_dst.copy_from_slice(app_info.app_src());
             asm!("fence.i");
         }
     }
@@ -78,34 +95,104 @@ impl AppManager {
         self.current_app += 1;
     }
 
+    fn display_app_info(&self, app_id: usize) {
+        let app_info = unsafe {
+            self.app_info[app_id].assume_init_ref()
+        };
+        kernel!(
+            "[kernel] app_{} [{:0x} {:0x}) - {}",
+            app_id,
+            app_info.start,
+            app_info.end,
+            app_info.name
+        );
+    }
+
     pub fn print_app_info(&self) {
         info!("[kernel] num_app = {}", self.num_app);
         for i in 0..self.num_app {
-            info!(
-                "[kernel] app_{} [{:0x} {:0x})",
-                i,
-                self.app_start[i],
-                self.app_start[i+1]
-            )
+            self.display_app_info(i);
         }
+    }
+
+    pub fn print_cur_app_info(&self) {
+        // 在load_app后，会紧跟着move_to_next_app
+        self.display_app_info(self.current_app-1);
     }
 }
 
 lazy_static! {
     static ref APP_MANAGER: UPSafeCell<AppManager> = unsafe {
         UPSafeCell::new({
-            unsafe extern "C" {
-                safe fn _num_app();
-            }
-            let num_app_ptr = _num_app as *const usize;
-            let num_app = num_app_ptr.read_volatile();
-            let mut app_start: [usize; MAX_APP_NUM+1] = [0; MAX_APP_NUM+1];
-            let app_start_raw: &[usize] = core::slice::from_raw_parts(num_app_ptr.add(1), num_app+1);
-            app_start[..=num_app].copy_from_slice(app_start_raw);
-
-            AppManager { num_app, current_app: 0, app_start }
+            init_app_manager()
         })
     };
+}
+
+struct Address<T>{
+    addr: UnsafeCell<usize>,
+    _phantom: PhantomData<T>,
+}
+
+impl <T> Address<T> {
+    fn new(addr: usize) -> Self {
+        Self {
+            addr: UnsafeCell::new(addr),
+            _phantom: PhantomData,
+        }
+    }
+
+    fn get_addr(&self) -> *const T {
+        unsafe {
+            *(self.addr.get() as *const usize) as *const T
+        }
+    }
+
+    fn add(&self, offset: usize) -> &Self {
+        let new_addr = unsafe {
+            self.get_addr().add(offset) as usize
+        };
+        unsafe {
+            *self.addr.get() = new_addr;
+        }
+        self
+    }
+
+    fn read(&self) -> T {
+        unsafe {
+            self.get_addr().read_volatile()
+        }
+    }
+}
+
+unsafe fn init_app_manager() -> AppManager {
+    unsafe extern "C" {
+        safe fn _num_app();
+    }
+    let app_info_addr = Address::<usize>::new(_num_app as usize);
+    let num_app = app_info_addr.read();
+    if num_app > MAX_APP_NUM {
+        panic!("to many apps: {num_app} > {MAX_APP_NUM}")
+    }
+
+    let mut app_infos: [MaybeUninit<AppInfo>; MAX_APP_NUM] = unsafe {MaybeUninit::uninit().assume_init()};
+    app_info_addr.add(1);
+    for i in 0..num_app {
+        let app_start = app_info_addr.read();
+        let app_name_addr = Address::<u8>::new(app_info_addr.add(1).read());
+        let app_name_len = app_name_addr.read() as usize;
+        let app_name = unsafe {
+            core::str::from_raw_parts(app_name_addr.add(1).get_addr(), app_name_len)
+        };
+        let app_end = app_info_addr.add(1).read();
+        app_infos[i] = MaybeUninit::new(AppInfo{
+            start: app_start,
+            end: app_end,
+            name: app_name,
+        });
+    }
+
+    AppManager { num_app, current_app: 0, app_info: app_infos }
 }
 
 pub fn init() {
@@ -114,6 +201,10 @@ pub fn init() {
 
 pub fn print_app_info() {
     APP_MANAGER.exclusive_accese().print_app_info();
+}
+
+pub fn print_cur_app_info() {
+    APP_MANAGER.exclusive_accese().print_cur_app_info();
 }
 
 pub fn run_next_app() -> ! {

@@ -21,7 +21,7 @@ kernel:
 $(KERNEL_BIN): kernel
 	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $@
 
-build: $(KERNEL_BIN)
+build: link_app $(KERNEL_BIN)
 
 disasm: kernel
 	@$(OBJDUMP) $(DISASM) $(KERNEL_ELF) | less

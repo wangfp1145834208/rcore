@@ -14,6 +14,8 @@ impl Level {
     }
 }
 
+#[allow(unused)]
+pub const KERNEL: Level = Level::new(6, 96, "KERNEL");
 pub const ERROR: Level = Level::new(5, 31, "ERROR");
 pub const WARN: Level  = Level::new(4, 93, "WARN");
 pub const INFO: Level = Level::new(3, 34, "INFO");
@@ -81,6 +83,13 @@ macro_rules! __log {
             $crate::logging::log(meta, format_args!($fmt $(, $arg)*));
         }
     }
+}
+
+#[macro_export]
+macro_rules! kernel {
+    ($fmt:literal $(, $arg:expr)*) => {
+        $crate::__log!(&$crate::logging::KERNEL, $fmt $(, $arg)*)
+    };
 }
 
 #[macro_export]

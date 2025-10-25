@@ -1,5 +1,7 @@
 #![no_std]
 #![no_main]
+#![feature(str_from_raw_parts)]
+
 mod lang_items;
 mod sbi;
 mod console;
@@ -8,6 +10,7 @@ pub(crate) mod sync;
 pub(crate) mod batch;
 pub(crate) mod trap;
 pub(crate) mod syscall;
+pub(crate) mod stack_trace;
 
 use core::{arch::global_asm};
 
@@ -19,7 +22,7 @@ pub fn rust_main() -> ! {
     clear_bss();
     logging::init();
     info!("[kernel] hello, rcore");
-    log_level(false);
+    log_level(true);
     log_sections();
 
     trap::init();
