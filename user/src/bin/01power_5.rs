@@ -1,8 +1,6 @@
 #![no_std]
 #![no_main]
 
-use user_lib::task_info;
-
 #[macro_use]
 extern crate user_lib;
 
@@ -21,7 +19,6 @@ fn main() -> i32 {
         s[next] = s[cur] * p % m;
         cur = next;
         if i % 10000 == 0 {
-            task_info();
             println!("power_5 [{}/{}]", i, iter);
         }
     }

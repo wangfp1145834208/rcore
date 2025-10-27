@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 
-use crate::{info, kernel, sbi::shutdown, sync::up::UPSafeCell, task::{context::TaskContext, switch::__switch, task::TaskControlBlock}, utils::Address};
+use crate::{info, kernel, sbi::shutdown, sync::up::UPSafeCell, task::{context::TaskContext, switch::__switch, task::TaskControlBlock}, timer::get_time_ms, utils::Address};
 
 mod switch;
 pub mod task;
@@ -49,20 +49,10 @@ impl TaskManager {
         }
     }
 
-    fn mark_task_status(&self, status: TaskStatus) {
+    fn mark_task_status(&self, status: TaskStatus) -> *const TaskContext {
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
-        inner.tasks[current].status = status;
-    }
-
-    #[allow(unused)]
-    fn mark_current_suspened(&self) {
-        self.mark_task_status(TaskStatus::Ready);
-    }
-
-    #[allow(unused)]
-    fn mark_curent_exited(&self) {
-        self.mark_task_status(TaskStatus::Exited);
+        inner.tasks[current].set_status(status)
     }
 
     fn find_next_task(&self) -> Option<usize> {
@@ -94,10 +84,10 @@ impl TaskManager {
     }
 
     fn run_next_task(&self, status: TaskStatus) {
+        // 这里比较关键：需要在find_next_task前就重置当前任务状态，否则在只剩余一个任务的时候会出现任务无法完成的情况
+        let current_cx = self.mark_task_status(status).cast_mut();
         if let Some(next) = self.find_next_task() {
             let mut inner = self.inner.exclusive_access();
-            let current = inner.current_task;
-            let current_cx = inner.tasks[current].set_status(status).cast_mut();
             let next_cx = inner.tasks[next].set_status(TaskStatus::Running);
             inner.current_task = next;
             drop(inner);
@@ -106,7 +96,7 @@ impl TaskManager {
                 __switch(current_cx, next_cx);
             }
         } else {
-            kernel!("All application complted");
+            kernel!("All application completed! Total cost {}ms", get_time_ms());
             shutdown(false);
         }
     }
