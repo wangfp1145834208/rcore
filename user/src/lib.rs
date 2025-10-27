@@ -32,7 +32,7 @@ fn clear_bss() {
     });
 }
 
-use crate::syscall::{sys_exit, sys_write};
+use crate::syscall::{sys_exit, sys_get_time, sys_write, sys_yield};
 
 pub fn write(fd: usize, buf: &[u8]) -> isize {
     sys_write(fd, buf)
@@ -40,4 +40,16 @@ pub fn write(fd: usize, buf: &[u8]) -> isize {
 
 pub fn exit(exit_code: i32) -> isize {
     sys_exit(exit_code)
+}
+
+pub fn yield_() -> isize {
+    sys_yield()
+}
+
+pub fn get_time() -> isize {
+    sys_get_time()
+}
+
+pub fn task_info() {
+    sys_task_info();
 }

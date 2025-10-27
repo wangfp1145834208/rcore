@@ -2,15 +2,23 @@
 #![no_main]
 #![feature(str_from_raw_parts)]
 
+#[path = "boards/qemu.rs"]
+mod board;
+
 mod lang_items;
 mod sbi;
 mod console;
 pub(crate) mod logging;
 pub(crate) mod sync;
-pub(crate) mod batch;
+// pub(crate) mod batch;
+pub(crate) mod config;
 pub(crate) mod trap;
 pub(crate) mod syscall;
 pub(crate) mod stack_trace;
+pub(crate) mod loader;
+pub(crate) mod task;
+pub(crate) mod timer;
+pub(crate) mod utils;
 
 use core::{arch::global_asm};
 
@@ -26,8 +34,10 @@ pub fn rust_main() -> ! {
     log_sections();
 
     trap::init();
-    batch::init();
-    batch::run_next_app();
+    trap::enable_timer_interrupt();
+    timer::set_next_trigger();
+    task::run_first_task();
+    panic!("Unreachable in rust_main!");
 }
 
 #[inline(never)]

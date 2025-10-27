@@ -1,8 +1,8 @@
 use core::arch::global_asm;
 
-use riscv::register::{scause::{self, Exception, Trap}, stval, stvec};
+use riscv::register::{scause::{self, Exception, Interrupt, Trap}, sie, stval, stvec};
 
-use crate::{batch::run_next_app, syscall::syscall, trap::context::TrapContext, warn};
+use crate::{syscall::syscall, task::{exit_current_and_run_next, suspend_current_and_run_next}, timer::set_next_trigger, trap::context::TrapContext, warn};
 
 pub mod context;
 
@@ -28,12 +28,16 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
         },
         Trap::Exception(Exception::StoreFault) | Trap::Exception(Exception::StorePageFault) => {
             warn!("[kernel] PageFault in application, kernel killed it.");
-            run_next_app();
+            exit_current_and_run_next();
         },
         Trap::Exception(Exception::IllegalInstruction) => {
             warn!("[kernel] IllegalIstruction in application, kernel killed it.");
-            run_next_app();
+            exit_current_and_run_next();
         },
+        Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            set_next_trigger();
+            suspend_current_and_run_next();
+        }
         _ => {
             panic!(
                 "Unsupported trap {:?}, stval = {:#x}!",
@@ -43,4 +47,8 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
         }
     }
     cx
+}
+
+pub fn enable_timer_interrupt() {
+    unsafe { sie::set_stimer(); }
 }

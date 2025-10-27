@@ -1,6 +1,6 @@
-use crate::{batch::print_cur_app_info};
+use crate::task::print_curent_task_info;
 
 pub fn sys_task_info() -> isize {
-    print_cur_app_info();
+    print_curent_task_info();
     1
 }

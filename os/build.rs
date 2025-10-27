@@ -1,4 +1,4 @@
-use std::fs::{File, read_dir};
+use std::fs::{read_dir, File};
 use std::io::{Result, Write};
 
 static TARGET_DIR: &'static str = "../user/target/riscv64gc-unknown-none-elf/release/";
@@ -11,10 +11,14 @@ fn insert_app_data() -> Result<()> {
     let mut f = File::create("src/link_app.S")?;
     let mut apps = read_dir("../user/src/bin")?.
         into_iter().
-        map(|dir_entry| {
-            let name_with_ext = dir_entry.unwrap().file_name().into_string().unwrap();
+        filter_map(|dir_entry| {
+            let dir_entry = dir_entry.unwrap();
+            if dir_entry.file_type().unwrap().is_dir() {
+                return None;
+            }
+            let name_with_ext = dir_entry.file_name().into_string().unwrap();
             let mut it = name_with_ext.split('.');
-            it.next().unwrap_or_default().to_owned()
+            Some(it.next().unwrap_or_default().to_owned())
         }).
         collect::<Vec<_>>();
     apps.sort();

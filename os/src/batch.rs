@@ -1,6 +1,6 @@
 use core::{arch::asm, cell::UnsafeCell, marker::PhantomData, mem::MaybeUninit};
 
-use crate::{info, kernel, sbi::shutdown, trap::context::TrapContext};
+use crate::{info, kernel, sbi::shutdown, trap::context::TrapContext, utils::Address};
 
 use super::sync::up::UPSafeCell;
 use lazy_static::*;
@@ -127,42 +127,6 @@ lazy_static! {
             init_app_manager()
         })
     };
-}
-
-struct Address<T>{
-    addr: UnsafeCell<usize>,
-    _phantom: PhantomData<T>,
-}
-
-impl <T> Address<T> {
-    fn new(addr: usize) -> Self {
-        Self {
-            addr: UnsafeCell::new(addr),
-            _phantom: PhantomData,
-        }
-    }
-
-    fn get_addr(&self) -> *const T {
-        unsafe {
-            *(self.addr.get() as *const usize) as *const T
-        }
-    }
-
-    fn add(&self, offset: usize) -> &Self {
-        let new_addr = unsafe {
-            self.get_addr().add(offset) as usize
-        };
-        unsafe {
-            *self.addr.get() = new_addr;
-        }
-        self
-    }
-
-    fn read(&self) -> T {
-        unsafe {
-            self.get_addr().read_volatile()
-        }
-    }
 }
 
 unsafe fn init_app_manager() -> AppManager {
