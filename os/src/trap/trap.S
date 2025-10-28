@@ -13,7 +13,14 @@
     .align 2
 
 __all_traps:
+    sd tp, -8(sp)
+    csrr tp, sstatus  # 这里其实会破坏tp寄存器的值
+    addi tp, tp, 0x100
+    bnez tp, __real_trap_entry  # spp不为0时，则无需换栈
     csrrw sp, sscratch, sp
+
+__real_trap_entry:
+    ld tp, -8(sp)
     addi sp, sp, -34*8
     SAVE_GP 1  # ra
     SAVE_GP 3
@@ -33,7 +40,7 @@ __all_traps:
 
 __restore:
     # mv sp, a0  # sp 通过TaskContext获取，而不再以参数方式传递
-    ld t0, 32*8(sp)
+    ld t0, 32*8(sp)  # 获取sstatus
     ld t1, 33*8(sp)
     ld t2, 2*8(sp)
     csrw sstatus, t0
@@ -47,5 +54,12 @@ __restore:
         .set n, n+1
     .endr
     addi sp, sp, 34*8
+
+    sd tp, -8(sp)
+    csrr tp, sstatus
+    addi tp, tp, 0x100
+    bnez tp, __real_trap_end  # spp不为0时，则无需换栈
     csrrw sp, sscratch, sp
+__real_trap_end:
+    ld tp, -8(sp)
     sret

@@ -22,6 +22,8 @@ pub(crate) mod utils;
 
 use core::{arch::global_asm};
 
+use crate::trap::check_kernel_interrupt;
+
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.S"));
 
@@ -36,6 +38,16 @@ pub fn rust_main() -> ! {
     trap::init();
     trap::enable_timer_interrupt();
     timer::set_next_trigger();
+
+    unsafe { riscv::register::sstatus::set_sie(); }
+    loop {
+        if check_kernel_interrupt() {
+            kernel!("kernel interrupt returned.");
+            break;
+        }
+    }
+    unsafe { riscv::register::sstatus::clear_sie(); }
+
     task::run_first_task();
     panic!("Unreachable in rust_main!");
 }

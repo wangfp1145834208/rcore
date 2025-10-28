@@ -1,8 +1,8 @@
 use core::fmt::Display;
 
-use crate::{info, loader::{get_base_i, init_app_cx}, task::context::TaskContext, utils::Address};
+use crate::{info, kernel, loader::{get_base_i, init_app_cx}, task::context::TaskContext, utils::Address};
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum TaskStatus {
     UnInit,
     Ready,
@@ -17,6 +17,9 @@ pub struct TaskControlBlock {
 
     app_range: (usize, usize),
     pub app_name: &'static str,
+
+    user_time: usize,
+    kernel_time: usize,
 }
 
 impl TaskControlBlock {
@@ -51,7 +54,18 @@ impl TaskControlBlock {
 
     pub fn set_status(&mut self, status: TaskStatus) -> *const TaskContext {
         self.status = status;
+        if status == TaskStatus::Exited {
+            kernel!("app {} exit with user_time: {}us, kernel_time: {}us", self.app_name, self.user_time, self.kernel_time);
+        }
         &self.cx as *const TaskContext
+    }
+
+    pub fn update_user_time(&mut self, duration: usize) {
+        self.user_time += duration;
+    }
+
+    pub fn update_kernel_time(&mut self, duration: usize) {
+        self.kernel_time += duration;
     }
 }
 
@@ -62,13 +76,16 @@ impl Default for TaskControlBlock {
             cx: TaskContext::zero_init(),
 
             app_range: (0, 0),
-            app_name: ""
+            app_name: "",
+
+            user_time: 0,
+            kernel_time: 0,
         }
     }
 }
 
 impl Display for TaskControlBlock {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "app_name: {}, range: [0x{:0x}, 0x{:0x})", self.app_name, self.app_range.0, self.app_range.1)        
+        write!(f, "app_name: {}, range: [0x{:0x}, 0x{:0x}), status: {:?}", self.app_name, self.app_range.0, self.app_range.1, self.status)        
     }
 }

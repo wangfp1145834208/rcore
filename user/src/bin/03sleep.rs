@@ -10,7 +10,7 @@ extern crate user_lib;
 fn main() -> i32 {
     task_info();
     let current_time = get_time();
-    let wait_for = current_time + 1000;
+    let wait_for = current_time + 1;
     while get_time() < wait_for {
         yield_();
     }

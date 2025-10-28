@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 
-use crate::{info, kernel, sbi::shutdown, sync::up::UPSafeCell, task::{context::TaskContext, switch::__switch, task::TaskControlBlock}, timer::get_time_ms, utils::Address};
+use crate::{config::MAX_APP_NUM, debug, info, kernel, sbi::shutdown, sync::up::UPSafeCell, task::{context::TaskContext, task::TaskControlBlock}, timer::{get_time_ms, get_time_us}, utils::Address};
 
 mod switch;
 pub mod task;
@@ -8,7 +8,13 @@ pub mod context;
 
 use task::{TaskStatus};
 
-const MAX_APP_NUM: usize = 16;
+static mut SWITCH_TIME_COUNT_US: usize = 0;
+
+unsafe fn __switch(current_task_cx_ptr: *mut TaskContext, next_task_cx_ptr: *const TaskContext) {
+    let start_at = get_time_us();
+    unsafe { switch::__switch(current_task_cx_ptr, next_task_cx_ptr); }
+    unsafe { SWITCH_TIME_COUNT_US += get_time_us() - start_at; }
+}
 
 pub struct TaskManager {
     num_app: usize,
@@ -18,6 +24,15 @@ pub struct TaskManager {
 struct TaskManagerInner {
     current_task: usize,
     tasks: [TaskControlBlock; MAX_APP_NUM],
+    stop_watch: usize,
+}
+
+impl TaskManagerInner {
+    fn refresh_stop_watch(&mut self) -> usize {
+        let start_at = self.stop_watch;
+        self.stop_watch = get_time_us();
+        self.stop_watch - start_at
+    }
 }
 
 lazy_static! {
@@ -44,7 +59,8 @@ impl TaskManager {
             num_app,
             inner: UPSafeCell::new(TaskManagerInner {
                 current_task: 0,
-                tasks
+                tasks,
+                stop_watch: 0,
             })
         }
     }
@@ -74,6 +90,7 @@ impl TaskManager {
         let mut inner = self.inner.exclusive_access();
         let current =  inner.current_task;
         let current_cx = inner.tasks[current].set_status(TaskStatus::Running);
+        inner.refresh_stop_watch();
         drop(inner);
 
         let mut _unused = TaskContext::zero_init();
@@ -86,9 +103,11 @@ impl TaskManager {
     fn run_next_task(&self, status: TaskStatus) {
         // 这里比较关键：需要在find_next_task前就重置当前任务状态，否则在只剩余一个任务的时候会出现任务无法完成的情况
         let current_cx = self.mark_task_status(status).cast_mut();
+        self.metric_kernel_time();
         if let Some(next) = self.find_next_task() {
             let mut inner = self.inner.exclusive_access();
             let next_cx = inner.tasks[next].set_status(TaskStatus::Running);
+            debug!("change task from [{}] to [{}]", inner.tasks[inner.current_task], inner.tasks[next]);
             inner.current_task = next;
             drop(inner);
 
@@ -96,7 +115,7 @@ impl TaskManager {
                 __switch(current_cx, next_cx);
             }
         } else {
-            kernel!("All application completed! Total cost {}ms", get_time_ms());
+            kernel!("All application completed! Total cost {}ms, context switch cost {}us", get_time_ms(), get_switch_time_count_us());
             shutdown(false);
         }
     }
@@ -105,6 +124,21 @@ impl TaskManager {
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;
         kernel!("[app_{}] {}", current, inner.tasks[current]);
+    }
+
+    fn metric_time(&self, mut updater: impl FnMut(&mut TaskControlBlock, usize)) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let duration = inner.refresh_stop_watch();
+        updater(&mut inner.tasks[current], duration);
+    }
+
+    fn metric_user_time(&self) {
+        self.metric_time(|task, duration| task.update_user_time(duration));
+    }
+
+    fn metric_kernel_time(&self) {
+        self.metric_time(|task, duration| task.update_kernel_time(duration));
     }
 }
 
@@ -122,4 +156,16 @@ pub fn exit_current_and_run_next() {
 
 pub fn print_curent_task_info() {
     TASK_MANAGER.print_task_info();
+}
+
+pub fn metric_user_time() {
+    TASK_MANAGER.metric_user_time();
+}
+
+pub fn metric_kernel_time() {
+    TASK_MANAGER.metric_kernel_time();
+}
+
+pub fn get_switch_time_count_us() -> usize {
+    unsafe { SWITCH_TIME_COUNT_US }
 }
