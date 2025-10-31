@@ -58,9 +58,14 @@ name = "os"
 version = "0.1.0"
 dependencies = [
  "lazy_static",
+ "os_common",
  "riscv",
  "sbi-rt",
 ]
+
+[[package]]
+name = "os_common"
+version = "0.1.0"
 
 [[package]]
 name = "regex"

@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 riscv = { git = "https://github.com/rcore-os/riscv", features = ["inline-asm"] } 
+os_common = { path = "../common" }
 
 [profile.release]
 debug = true

@@ -50,6 +50,14 @@ pub fn get_time() -> isize {
     sys_get_time()
 }
 
-pub fn task_info() {
-    sys_task_info();
+pub fn get_task_info(app_id: usize) -> Option<os_common::TaskInfo> {
+    let mut ts = os_common::TaskInfo::default();
+    let result = sys_task_info(app_id, (&mut ts) as *mut os_common::TaskInfo);
+    if result == 0 {
+        Some(ts)
+        // println!("task_info - {} - {}", app_id, ts);
+    } else {
+        None
+        // println!("task_info - {} - get task_info failed", app_id);
+    }
 }

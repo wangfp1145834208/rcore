@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 
-use crate::{config::MAX_APP_NUM, debug, info, kernel, sbi::shutdown, sync::up::UPSafeCell, task::{context::TaskContext, task::TaskControlBlock}, timer::{get_time_ms, get_time_us}, utils::Address};
+use crate::{config::MAX_APP_NUM, debug, info, kernel, sbi::shutdown, sync::up::UPSafeCell, task::{context::TaskContext, task::TaskControlBlock}, timer::{get_time_ms, get_time_us}, utils::Address, warn};
 
 mod switch;
 pub mod task;
@@ -126,6 +126,21 @@ impl TaskManager {
         kernel!("[app_{}] {}", current, inner.tasks[current]);
     }
 
+    fn get_task_info(&self, app_id: usize, ts: &'static mut os_common::TaskInfo) -> isize {
+        if app_id >= self.num_app {
+            warn!("cannot find {} task info", app_id);
+            return -1;
+        }
+        let inner = self.inner.exclusive_access();
+        let task = inner.tasks[app_id];
+        ts.id = app_id;
+        ts.name = task.app_name;
+        ts.call = task.sys_call;
+        ts.time = task.user_time;
+
+        0
+    }
+
     fn metric_time(&self, mut updater: impl FnMut(&mut TaskControlBlock, usize)) {
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
@@ -139,6 +154,12 @@ impl TaskManager {
 
     fn metric_kernel_time(&self) {
         self.metric_time(|task, duration| task.update_kernel_time(duration));
+    }
+
+    fn metric_sys_call(&self, id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].metric_sys_call(id);
     }
 }
 
@@ -154,8 +175,14 @@ pub fn exit_current_and_run_next() {
     TASK_MANAGER.run_next_task(TaskStatus::Exited);
 }
 
+#[allow(unused)]
 pub fn print_curent_task_info() {
     TASK_MANAGER.print_task_info();
+}
+
+pub fn get_task_info(app_id: usize, ts: *mut os_common::TaskInfo) -> isize {
+    let ts = unsafe { &mut *ts };
+    TASK_MANAGER.get_task_info(app_id, ts)
 }
 
 pub fn metric_user_time() {
@@ -168,4 +195,8 @@ pub fn metric_kernel_time() {
 
 pub fn get_switch_time_count_us() -> usize {
     unsafe { SWITCH_TIME_COUNT_US }
+}
+
+pub fn metric_sys_call(id: usize) {
+    TASK_MANAGER.metric_sys_call(id);
 }

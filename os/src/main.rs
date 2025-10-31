@@ -22,7 +22,7 @@ pub(crate) mod utils;
 
 use core::{arch::global_asm};
 
-use crate::trap::check_kernel_interrupt;
+use crate::{sbi::shutdown, syscall::{test_syscall_list}, trap::check_kernel_interrupt};
 
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.S"));
@@ -34,6 +34,11 @@ pub fn rust_main() -> ! {
     info!("[kernel] hello, rcore");
     log_level(true);
     log_sections();
+
+    if let Some(_) = option_env!("TEST") {
+        main_test();
+        shutdown(false);
+    }
 
     trap::init();
     trap::enable_timer_interrupt();
@@ -94,4 +99,8 @@ fn log_level(on: bool) {
         debug!("debug");
         trace!("trace");
     }
+}
+
+fn main_test() {
+    test_syscall_list();
 }

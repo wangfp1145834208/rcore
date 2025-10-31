@@ -1,5 +1,7 @@
 use core::fmt::Display;
 
+use os_common::{syscall_list};
+
 use crate::{info, kernel, loader::{get_base_i, init_app_cx}, task::context::TaskContext, utils::Address};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -18,8 +20,10 @@ pub struct TaskControlBlock {
     app_range: (usize, usize),
     pub app_name: &'static str,
 
-    user_time: usize,
-    kernel_time: usize,
+    pub user_time: usize,
+    pub kernel_time: usize,
+
+    pub sys_call: [os_common::SyscallInfo; os_common::MAX_SYSCALL_NUM],
 }
 
 impl TaskControlBlock {
@@ -67,6 +71,14 @@ impl TaskControlBlock {
     pub fn update_kernel_time(&mut self, duration: usize) {
         self.kernel_time += duration;
     }
+
+    pub fn metric_sys_call(&mut self, id: usize) {
+        match self.sys_call.iter_mut()
+                    .find(|call| call.id == id) {
+            Some(call) => {call.times += 1},
+            None => {},
+        };
+    }
 }
 
 impl Default for TaskControlBlock {
@@ -80,6 +92,8 @@ impl Default for TaskControlBlock {
 
             user_time: 0,
             kernel_time: 0,
+            
+            sys_call: syscall_list(),
         }
     }
 }

@@ -3,7 +3,7 @@
     .section .data
     .global _num_app
 _num_app:
-    .quad 4
+    .quad 5
     .quad app_0_start
     .quad app_0_name
     .quad app_1_start
@@ -12,7 +12,9 @@ _num_app:
     .quad app_2_name
     .quad app_3_start
     .quad app_3_name
-    .quad app_3_end
+    .quad app_4_start
+    .quad app_4_name
+    .quad app_4_end
 
     .global app_0_name
 app_0_name:
@@ -30,6 +32,10 @@ app_2_name:
 app_3_name:
     .byte 7
     .ascii "03sleep"
+    .global app_4_name
+app_4_name:
+    .byte 11
+    .ascii "04task_info"
 
     .section .data
     .global app_0_start
@@ -58,3 +64,10 @@ app_2_end:
 app_3_start:
     .incbin "../user/target/riscv64gc-unknown-none-elf/release/03sleep.bin"
 app_3_end:
+
+    .section .data
+    .global app_4_start
+    .global app_4_end
+app_4_start:
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/04task_info.bin"
+app_4_end:
