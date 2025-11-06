@@ -1,4 +1,4 @@
-use crate::{info, syscall::{fs::sys_write, process::{sys_exit, sys_get_time, sys_yield}, task_info::sys_task_info}, task::metric_sys_call};
+use crate::{info, println, syscall::{fs::sys_write, process::{sys_exit, sys_get_time, sys_yield}, task_info::sys_task_info}, task::metric_sys_call};
 
 pub mod fs;
 pub mod process;
@@ -22,4 +22,5 @@ pub fn test_syscall_list() {
     for c in &call {
         info!("call_id: {}", c.id);
     }
+    println!("syscall list test passed");
 }

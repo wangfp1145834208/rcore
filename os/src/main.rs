@@ -2,6 +2,8 @@
 #![no_main]
 #![feature(str_from_raw_parts)]
 
+extern crate alloc;
+
 #[path = "boards/qemu.rs"]
 mod board;
 
@@ -19,10 +21,11 @@ pub(crate) mod loader;
 pub(crate) mod task;
 pub(crate) mod timer;
 pub(crate) mod utils;
+pub(crate) mod mm;
 
 use core::{arch::global_asm};
 
-use crate::{sbi::shutdown, syscall::{test_syscall_list}, trap::check_kernel_interrupt};
+use crate::{board::MEMORY_END, mm::{address::vpn_range_test, frame_allocator::frame_allocator_test, heap_allocator::heap_test, memory_set::remap_test}, sbi::shutdown, syscall::test_syscall_list, trap::check_kernel_interrupt};
 
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.S"));
@@ -34,6 +37,10 @@ pub fn rust_main() -> ! {
     info!("[kernel] hello, rcore");
     log_level(true);
     log_sections();
+    // heap和frame_allocator分配的都是内核的地址空间，为identical
+    mm::init_heap();
+    mm::init_frame_allocator();
+    mm::KERNEL_SPACE.exclusive_access().activate();
 
     if let Some(_) = option_env!("TEST") {
         main_test();
@@ -83,12 +90,15 @@ fn log_sections() {
 
         safe fn sbss();
         safe fn ebss();
+
+        safe fn ekernel();
     }
 
-    trace!("[kernel] .text range: {:0x} - {:0x}", stext as usize, etext as usize);
-    trace!("[kernel] .rodata range: {:0x} - {:0x}", srodata as usize, erodata as usize);
-    trace!("[kernel] .data range: {:0x} - {:0x}", sdata as usize, edata as usize);
-    trace!("[kernel] . bss range: {:0x} - {:0x}", sbss as usize, ebss as usize);
+    kernel!(".text range: {:#x} - {:#x}", stext as usize, etext as usize);
+    kernel!(".rodata range: {:#x} - {:#x}", srodata as usize, erodata as usize);
+    kernel!(".data range: {:#x} - {:#x}", sdata as usize, edata as usize);
+    kernel!(".bss range: {:#x} - {:#x}", sbss as usize, ebss as usize);
+    kernel!(".frame range: {:#x} - {:#x}", ekernel as usize, MEMORY_END as usize);
 }
 
 fn log_level(on: bool) {
@@ -103,4 +113,8 @@ fn log_level(on: bool) {
 
 fn main_test() {
     test_syscall_list();
+    heap_test();
+    frame_allocator_test();
+    vpn_range_test();
+    remap_test();
 }

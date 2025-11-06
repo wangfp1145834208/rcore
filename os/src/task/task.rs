@@ -45,7 +45,7 @@ impl TaskControlBlock {
 
         
         let dst_addr = get_base_i(app_id);
-        let size = self.app_range.1.wrapping_sub(self.app_range.0);
+        let size = self.app_size();
         unsafe {
             let src = core::slice::from_raw_parts(self.app_range.0 as *const u8, size);
             let dst = core::slice::from_raw_parts_mut(dst_addr as *mut u8, size);
@@ -54,6 +54,10 @@ impl TaskControlBlock {
         self.cx = TaskContext::ret_to_restore(init_app_cx(app_id));
         self.status = TaskStatus::Ready;
         info!("[kernel] load app {} from (.data)[0x{:0x}, 0x{:0x}) to kernel (.text)[0x{:0x}, 0x{:0x})", self.app_name, self.app_range.0, self.app_range.1, dst_addr, dst_addr+size);
+    }
+
+    fn app_size(&self) -> usize {
+        self.app_range.1.wrapping_sub(self.app_range.0)
     }
 
     pub fn set_status(&mut self, status: TaskStatus) -> *const TaskContext {
@@ -78,6 +82,12 @@ impl TaskControlBlock {
             Some(call) => {call.times += 1},
             None => {},
         };
+    }
+
+    pub fn get_app_data(&self) -> &'static [u8] {
+        unsafe {
+            core::slice::from_raw_parts(self.app_range.0 as *const u8, self.app_size())
+        }
     }
 }
 
