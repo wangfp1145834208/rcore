@@ -22,6 +22,7 @@ fn insert_app_data() -> Result<()> {
         }).
         collect::<Vec<_>>();
     apps.sort();
+    // let apps = apps.split_off(apps.len()-1);
 
     writeln!(
         f,

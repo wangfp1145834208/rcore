@@ -6,6 +6,12 @@ edition = "2024"
 [dependencies]
 riscv = { git = "https://github.com/rcore-os/riscv", features = ["inline-asm"] } 
 os_common = { path = "../common" }
+buddy_system_allocator = "0.6"
 
 [profile.release]
 debug = true
+
+[features]
+default = ["custom"]
+custom = []
+buddy = []

@@ -5,7 +5,7 @@ use bitflags::bitflags;
 use lazy_static::lazy_static;
 use riscv::{register::satp};
 
-use crate::{config::{MEMORY_END, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_SIZE}, info, kernel, mm::{FrameTracker, PTEFlags, PageTableEntry, PhysAddr, PhysPageNum, VPNRange, VirtAddr, VirtPageNum, frame_allocator::frame_alloc, page_table::PageTable}, println, sync::up::UPSafeCell};
+use crate::{config::{MEMORY_END, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_SIZE}, debug, info, kernel, mm::{FrameTracker, PTEFlags, PageTableEntry, PhysAddr, PhysPageNum, VPNRange, VirtAddr, VirtPageNum, frame_allocator::frame_alloc, page_table::PageTable}, println, sync::up::UPSafeCell};
 
 lazy_static! {
     pub static ref KERNEL_SPACE: Arc<UPSafeCell<MemorySet>> = Arc::new(UPSafeCell::new(
@@ -60,8 +60,12 @@ impl MemorySet {
         self.areas.push(map_area);
     }
 
-    pub fn insert_framed_area(&mut self, start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) {
-        self.push(MapArea::framed(start_va, end_va, permission), None);
+    pub fn insert_framed_area(&mut self, start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) -> usize {
+        let map_area = MapArea::framed(start_va, end_va, permission);
+        let range_size = (usize::from(map_area.vpn_range.get_end()) - usize::from(map_area.vpn_range.get_start())) * PAGE_SIZE;
+        self.push(map_area, None);
+
+        range_size
     }
 
     pub fn map_trampoline(&mut self) {
@@ -207,7 +211,7 @@ impl MapArea {
     ) -> Self {
         let start_vpn: VirtPageNum = start_va.floor();
         let end_vpn: VirtPageNum = end_va.ceil();
-        info!("start_vpn: {:#x}, end_vpn: {:#x}", start_vpn.0, end_vpn.0);
+        debug!("start_vpn: {:#x}, end_vpn: {:#x}", start_vpn.0, end_vpn.0);
         Self {
             vpn_range: VPNRange::new(start_va.floor(), end_va.ceil()),
             data_frames: BTreeMap::new(),

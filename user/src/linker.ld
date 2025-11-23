@@ -26,6 +26,8 @@ SECTIONS
         *(.sbss .sbss.*)
     }
     ebss = .;
+    . = ALIGN(4K);
+    sheap = .;
     /DISCARD/ : {
         *(.eh_frame)
         *(.debug*)

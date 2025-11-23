@@ -1,17 +1,21 @@
 #![no_std]
 #![feature(linkage)]
+#![allow(static_mut_refs)]
 
 mod lang_items;
 #[macro_use]
 pub mod console;
 mod syscall;
+mod allocator;
 
 pub use syscall::sys_task_info;
+pub use allocator::get_heap_addr;
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text.entry")]
 pub extern "C" fn _start() -> ! {
     clear_bss();
+    init_heap();
     exit(main());
     panic!("unreachable")
 }
@@ -32,7 +36,7 @@ fn clear_bss() {
     });
 }
 
-use crate::syscall::{sys_exit, sys_get_time, sys_write, sys_yield};
+use crate::{allocator::init_heap, syscall::{sys_exit, sys_get_time, sys_write, sys_yield}};
 
 pub fn write(fd: usize, buf: &[u8]) -> isize {
     sys_write(fd, buf)

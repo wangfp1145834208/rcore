@@ -1,4 +1,4 @@
-use crate::{info, println, syscall::{fs::sys_write, process::{sys_exit, sys_get_time, sys_yield}, task_info::sys_task_info}, task::metric_sys_call};
+use crate::{info, println, syscall::{fs::sys_write, process::{sys_exit, sys_get_time, sys_mem_apply, sys_yield}, task_info::sys_task_info}, task::metric_sys_call};
 
 pub mod fs;
 pub mod process;
@@ -12,6 +12,7 @@ pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
         os_common::SYSCALL_YIELD => sys_yield(),
         os_common::SYSCALL_TASK_INFO => sys_task_info(args[0], args[1] as *mut os_common::TaskInfo),
         os_common::SYSCALL_GET_TIME => sys_get_time(),
+        os_common::SYSCALL_MEM_APPLY => sys_mem_apply(args[0], args[1]),
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
     }
 }

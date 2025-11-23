@@ -177,6 +177,12 @@ impl TaskManager {
         let current = inner.current_task;
         inner.tasks[current].get_trap_context()
     }
+
+    fn with_current_task<T>(&self, f: impl Fn(Option<&mut TaskControlBlock>) -> T) -> T {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        f(inner.tasks.get_mut(current))
+    }
 }
 
 pub fn run_first_task() {
@@ -222,4 +228,8 @@ pub fn current_user_token() -> usize {
 
 pub fn current_trap_cx() -> &'static mut TrapContext {
     TASK_MANAGER.get_current_trap_cx()
+}
+
+pub fn with_current_task<T>(f: impl Fn(Option<&mut TaskControlBlock>) -> T) -> T {
+    TASK_MANAGER.with_current_task(f)
 }

@@ -1,4 +1,10 @@
 #![no_std]
+#![feature(let_chains)]
+#![feature(cell_update)]
+
+mod allocator;
+
+pub use allocator::Heap;
 
 use core::fmt::Display;
 
@@ -109,4 +115,5 @@ init_syscall! {
     (SYSCALL_YIELD, 124, "yield")
     (SYSCALL_GET_TIME, 169, "get_time")
     (SYSCALL_TASK_INFO, 410, "task_info")
+    (SYSCALL_MEM_APPLY, 600, "mem_apply")
 }

@@ -3,7 +3,7 @@
     .section .data
     .global _num_app
 _num_app:
-    .quad 5
+    .quad 6
     .quad app_0_start
     .quad app_0_name
     .quad app_1_start
@@ -14,7 +14,9 @@ _num_app:
     .quad app_3_name
     .quad app_4_start
     .quad app_4_name
-    .quad app_4_end
+    .quad app_5_start
+    .quad app_5_name
+    .quad app_5_end
 
     .global app_0_name
 app_0_name:
@@ -36,6 +38,10 @@ app_3_name:
 app_4_name:
     .byte 11
     .ascii "04task_info"
+    .global app_5_name
+app_5_name:
+    .byte 6
+    .ascii "05heap"
 
     .section .data
     .global app_0_start
@@ -76,3 +82,11 @@ app_3_end:
 app_4_start:
     .incbin "../user/target/riscv64gc-unknown-none-elf/release/04task_info"
 app_4_end:
+
+    .section .data
+    .global app_5_start
+    .global app_5_end
+    .align 3
+app_5_start:
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/05heap"
+app_5_end:

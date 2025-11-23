@@ -1,11 +1,5 @@
 use core::arch::asm;
 
-// const SYSCALL_WRITE: usize = 64;
-// const SYSCALL_EXIT: usize = 93;
-// const SYSCALL_YIELD: usize = 124;
-// const SYSCALL_GET_TIME: usize = 169;
-// const SYSCALL_TASK_INFO: usize = 256;
-
 fn syscall(id: usize, args: [usize; 3]) -> isize {
     let mut ret: isize;
     unsafe {
@@ -42,4 +36,8 @@ pub fn sys_get_time() -> isize {
 
 pub fn sys_task_info(app_id: usize, ts: *mut os_common::TaskInfo) -> isize {
     syscall(os_common::SYSCALL_TASK_INFO, [app_id, ts as usize, 0])
+}
+
+pub fn sys_mem_apply(va: usize, size: usize) -> isize {
+    syscall(os_common::SYSCALL_MEM_APPLY, [va, size, 0])
 }
