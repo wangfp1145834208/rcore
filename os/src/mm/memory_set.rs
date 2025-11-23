@@ -3,9 +3,9 @@ use core::arch::asm;
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
 use bitflags::bitflags;
 use lazy_static::lazy_static;
-use riscv::register::satp;
+use riscv::{register::satp};
 
-use crate::{config::{MEMORY_END, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_SIZE}, info, mm::{FrameTracker, PTEFlags, PhysPageNum, VPNRange, VirtAddr, VirtPageNum, frame_allocator::frame_alloc, page_table::PageTable}, println, sync::up::UPSafeCell};
+use crate::{config::{MEMORY_END, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_SIZE}, info, kernel, mm::{FrameTracker, PTEFlags, PageTableEntry, PhysAddr, PhysPageNum, VPNRange, VirtAddr, VirtPageNum, frame_allocator::frame_alloc, page_table::PageTable}, println, sync::up::UPSafeCell};
 
 lazy_static! {
     pub static ref KERNEL_SPACE: Arc<UPSafeCell<MemorySet>> = Arc::new(UPSafeCell::new(
@@ -27,7 +27,7 @@ unsafe extern "C" {
     safe fn ebss();
 
     safe fn ekernel();
-    // safe fn strampoline();
+    safe fn strampoline();
 }
 
 pub struct MemorySet {
@@ -44,6 +44,14 @@ impl MemorySet {
         }
     }
 
+    pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
+        self.page_table.translate(vpn)
+    }
+
+    pub fn token(&self) -> usize {
+        self.page_table.token()
+    }
+
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         map_area.map(&mut self.page_table);
         if let Some(data) = data {
@@ -57,7 +65,12 @@ impl MemorySet {
     }
 
     pub fn map_trampoline(&mut self) {
-
+        let flags = PTEFlags::R | PTEFlags::X;
+        self.page_table.map(
+            VirtAddr::from(TRAMPOLINE).into(), 
+            PhysAddr::from(strampoline as usize).into(), 
+            flags,
+        );
     }
 
     #[inline(never)]
@@ -70,38 +83,37 @@ impl MemorySet {
             (etext as usize).into(),
             MapPermission::R | MapPermission::X
         ), None);
-        info!("mapping .text section success");
+        kernel!("mapping .text section success");
         memory_set.push(MapArea::identical(
             (srodata as usize).into(),
             (erodata as usize).into(),
             MapPermission::R
         ), None);
-        info!("mapping .rodata section success");
+        kernel!("mapping .rodata section success");
         memory_set.push(MapArea::identical(
             (sdata as usize).into(), 
             (edata as usize).into(),
            MapPermission::R | MapPermission::W
         ), None);
-        info!("mapping .data section success");
+        kernel!("mapping .data section success");
         memory_set.push(MapArea::identical(
             (sbss_with_stack as usize).into(), 
             (ebss as usize).into(),
            MapPermission::R | MapPermission::W
         ), None);
-        info!("mapping .bss section success");
+        kernel!("mapping .bss section success");
         memory_set.push(MapArea::identical(
             (ekernel as usize).into(), 
            MEMORY_END.into(),
            MapPermission::R | MapPermission::W
         ), None);
-        info!("mapping physical memory success");
+        kernel!("mapping physical memory success");
 
         memory_set
     }
 
-    pub fn from_elf(elf_data: &[u8]) -> (Self, usize, usize) {
-        let mut memory_set = MemorySet::new_bare();
-        memory_set.map_trampoline();
+    pub fn load_elf(&mut self, elf_data: &[u8]) -> (usize, usize) {
+        self.map_trampoline();
 
         let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
         let elf_header = elf.header;
@@ -125,7 +137,7 @@ impl MemorySet {
                     map_perm,
                 );
                 max_end_vpn = map_area.vpn_range.get_end();
-                memory_set.push(
+                self.push(
                     map_area,
                     Some(&elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize])
                 );
@@ -137,15 +149,21 @@ impl MemorySet {
         // guard page
         let user_stack_bottom = max_end_va + PAGE_SIZE;
         let user_stack_top = user_stack_bottom + USER_STACK_SIZE;
-        memory_set.push(MapArea::framed(
+        info!("mapped user stack");
+        self.push(MapArea::framed(
             user_stack_bottom, user_stack_top, MapPermission::R | MapPermission::W | MapPermission::U
         ), None);
-
-        memory_set.push(MapArea::framed(
-            TRAP_CONTEXT.into(), TRAMPOLINE.into(), MapPermission::R | MapPermission::W | MapPermission::U
+        info!("mapped user stack2");
+        self.push(MapArea::framed(
+            user_stack_top, user_stack_top, MapPermission::R | MapPermission::W | MapPermission::U
         ), None);
 
-        (memory_set, user_stack_top.into(), elf.header.pt2.entry_point() as usize)
+        self.push(MapArea::framed(
+            TRAP_CONTEXT.into(), TRAMPOLINE.into(), MapPermission::R | MapPermission::W 
+        ), None);
+
+        info!("stack_top: {:#x}, entry: {:#x}", user_stack_top.0, elf.header.pt2.entry_point() as usize);
+        (user_stack_top.into(), elf.header.pt2.entry_point() as usize)
     }
 
     pub fn activate(&self) {
@@ -174,7 +192,7 @@ bitflags! {
 }
 
 pub struct MapArea {
-    vpn_range: VPNRange,
+    pub vpn_range: VPNRange,
     data_frames: BTreeMap<VirtPageNum, FrameTracker>,
     map_type: MapType,
     map_perm: MapPermission,
@@ -187,6 +205,9 @@ impl MapArea {
         map_type: MapType,
         map_perm: MapPermission
     ) -> Self {
+        let start_vpn: VirtPageNum = start_va.floor();
+        let end_vpn: VirtPageNum = end_va.ceil();
+        info!("start_vpn: {:#x}, end_vpn: {:#x}", start_vpn.0, end_vpn.0);
         Self {
             vpn_range: VPNRange::new(start_va.floor(), end_va.ceil()),
             data_frames: BTreeMap::new(),
@@ -223,12 +244,14 @@ impl MapArea {
         page_table.map(vpn, ppn, pte_flags);
     }
 
+    #[allow(unused)]
     pub fn unmap(&mut self, page_table: &mut PageTable) {
         for vpn in &self.vpn_range {
             self.unmap_one(page_table, vpn);
         }
     }
 
+    #[allow(unused)]
     pub fn unmap_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
         match self.map_type {
             MapType::Framed => {self.data_frames.remove(&vpn);}

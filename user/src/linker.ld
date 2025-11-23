@@ -1,7 +1,7 @@
 OUTPUT_ARCH(riscv)
 ENTRY(_start)
 
-BASE_ADDRESS = 0x100000;
+BASE_ADDRESS = 0x10000;
 
 SECTIONS
 {
@@ -15,7 +15,7 @@ SECTIONS
         *(.rodata .rodata.*)
         *(.srodata .srodata.*)
     }
-    . = ALIGH(4K);
+    . = ALIGN(4K);
     .data : {
         *(.data .data.*)
         *(.sdata .sdata.*)
@@ -24,8 +24,8 @@ SECTIONS
         sbss = .;
         *(.bss .bss.*)
         *(.sbss .sbss.*)
-        ebss = .;
     }
+    ebss = .;
     /DISCARD/ : {
         *(.eh_frame)
         *(.debug*)

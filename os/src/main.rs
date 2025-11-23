@@ -25,7 +25,7 @@ pub(crate) mod mm;
 
 use core::{arch::global_asm};
 
-use crate::{board::MEMORY_END, mm::{address::vpn_range_test, frame_allocator::frame_allocator_test, heap_allocator::heap_test, memory_set::remap_test}, sbi::shutdown, syscall::test_syscall_list, trap::check_kernel_interrupt};
+use crate::{board::MEMORY_END, mm::{address::vpn_range_test, frame_allocator::frame_allocator_test, heap_allocator::heap_test, memory_set::remap_test}, sbi::shutdown, syscall::test_syscall_list, trap::{kernel_trap_test}};
 
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.S"));
@@ -42,23 +42,14 @@ pub fn rust_main() -> ! {
     mm::init_frame_allocator();
     mm::KERNEL_SPACE.exclusive_access().activate();
 
-    if let Some(_) = option_env!("TEST") {
-        main_test();
-        shutdown(false);
-    }
-
     trap::init();
     trap::enable_timer_interrupt();
     timer::set_next_trigger();
 
-    unsafe { riscv::register::sstatus::set_sie(); }
-    loop {
-        if check_kernel_interrupt() {
-            kernel!("kernel interrupt returned.");
-            break;
-        }
+    if option_env!("TEST").is_some() {
+        main_test();
+        shutdown(false);
     }
-    unsafe { riscv::register::sstatus::clear_sie(); }
 
     task::run_first_task();
     panic!("Unreachable in rust_main!");
@@ -117,4 +108,5 @@ fn main_test() {
     frame_allocator_test();
     vpn_range_test();
     remap_test();
+    kernel_trap_test();
 }

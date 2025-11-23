@@ -239,6 +239,13 @@ impl PhysPageNum {
             (pa.0 as *mut T).as_mut().unwrap()
         }
     }
+
+    pub fn get_mut_from_back<T>(&self) -> &'static mut T {
+        let pa: PhysAddr = (PhysAddr::from(*self).0 + PAGE_SIZE - core::mem::size_of::<T>()).into();
+        unsafe {
+            (pa.0 as *mut T).as_mut().unwrap()
+        }
+    }
 }
 
 pub trait StepOne {
@@ -323,10 +330,14 @@ pub type VPNRange = SimpleRange<VirtPageNum>;
 
 #[allow(unused)]
 pub fn vpn_range_test() {
-    let vpn_range = VPNRange::new(VirtAddr(0x80200000).ceil(), VirtAddr(0x80207000).floor());
-    for vpn in &vpn_range {
-        info!("vpn: {:?}", vpn);
-    }
+    // let vpn_range = VPNRange::new(VirtAddr(0x80200000).ceil(), VirtAddr(0x80207000).floor());
+    // for vpn in &vpn_range {
+    //     info!("vpn: {:?}", vpn);
+    // }
+    let va = VirtAddr(0x15000);
+    let floor_va: VirtAddr = va.floor().into();
+    let ceil_va: VirtAddr = va.ceil().into();
+    info!("vpn floor: {:#x}, ceil: {:#x}", floor_va.0, ceil_va.0);
 
     println!("vpn_range_test passed!");
 }

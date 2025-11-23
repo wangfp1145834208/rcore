@@ -16,12 +16,17 @@ OBJCOPY := rust-objcopy --binary-architecture=riscv64
 DISASM ?= -x
 
 kernel:
+	@cd ../user && make build
 	@cargo build $(MODE_ARGS)
 
 $(KERNEL_BIN): kernel
 	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $@
 
-build: link_app $(KERNEL_BIN)
+env:
+	rustup component add rust-src
+	rustup component add llvm-tools-preview
+
+build: env link_app $(KERNEL_BIN)
 
 disasm: kernel
 	@$(OBJDUMP) $(DISASM) $(KERNEL_ELF) | less
@@ -47,5 +52,8 @@ gdbclient:
 
 link_app:
 	@rustc build.rs && ./build
+
+clean:
+	@cargo clean
 
 .PHONY: kernel build disasm run run-inner gdbserver gdbclient link_app

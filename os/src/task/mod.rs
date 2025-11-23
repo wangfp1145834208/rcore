@@ -1,6 +1,7 @@
+use alloc::vec::Vec;
 use lazy_static::lazy_static;
 
-use crate::{config::MAX_APP_NUM, debug, info, kernel, sbi::shutdown, sync::up::UPSafeCell, task::{context::TaskContext, task::TaskControlBlock}, timer::{get_time_ms, get_time_us}, utils::Address, warn};
+use crate::{debug, info, kernel, sbi::shutdown, sync::up::UPSafeCell, task::{context::TaskContext, task::TaskControlBlock}, timer::{get_time_ms, get_time_us}, trap::context::TrapContext, utils::Address, warn};
 
 mod switch;
 pub mod task;
@@ -23,7 +24,7 @@ pub struct TaskManager {
 
 struct TaskManagerInner {
     current_task: usize,
-    tasks: [TaskControlBlock; MAX_APP_NUM],
+    tasks: Vec<TaskControlBlock>,
     stop_watch: usize,
 }
 
@@ -49,10 +50,12 @@ impl TaskManager {
         // 将地址切换到下一个app
         app_info_addr.add(1);
 
-        let mut tasks = [TaskControlBlock::default(); MAX_APP_NUM];
+        let mut tasks = Vec::<TaskControlBlock>::new();
         for app_id in 0..num_app {
-            tasks[app_id].set_app_info(&mut app_info_addr);
-            tasks[app_id].set_to_ready(app_id);
+            let mut task = TaskControlBlock::default();
+            task.set_app_info(&mut app_info_addr);
+            task.set_to_ready(app_id);
+            tasks.push(task);
         };
 
         Self {
@@ -126,19 +129,20 @@ impl TaskManager {
         kernel!("[app_{}] {}", current, inner.tasks[current]);
     }
 
-    fn get_task_info(&self, app_id: usize, ts: &'static mut os_common::TaskInfo) -> isize {
+    fn get_task_info(&self, app_id: usize) -> Option<os_common::TaskInfo> {
         if app_id >= self.num_app {
             warn!("cannot find {} task info", app_id);
-            return -1;
+            return None;
         }
         let inner = self.inner.exclusive_access();
-        let task = inner.tasks[app_id];
+        let mut ts = os_common::TaskInfo::default();
+        let task = &inner.tasks[app_id];
         ts.id = app_id;
-        ts.name = task.app_name;
+        ts.name.write(task.app_name);
         ts.call = task.sys_call;
         ts.time = task.user_time;
 
-        0
+        Some(ts)
     }
 
     fn metric_time(&self, mut updater: impl FnMut(&mut TaskControlBlock, usize)) {
@@ -161,6 +165,18 @@ impl TaskManager {
         let current = inner.current_task;
         inner.tasks[current].metric_sys_call(id);
     }
+
+    fn get_current_token(&self) -> usize {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].memory_set.token()
+    }
+
+    fn get_current_trap_cx(&self) -> &'static mut TrapContext {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].get_trap_context()
+    }
 }
 
 pub fn run_first_task() {
@@ -180,9 +196,8 @@ pub fn print_curent_task_info() {
     TASK_MANAGER.print_task_info();
 }
 
-pub fn get_task_info(app_id: usize, ts: *mut os_common::TaskInfo) -> isize {
-    let ts = unsafe { &mut *ts };
-    TASK_MANAGER.get_task_info(app_id, ts)
+pub fn get_task_info(app_id: usize) -> Option<os_common::TaskInfo> {
+    TASK_MANAGER.get_task_info(app_id)
 }
 
 pub fn metric_user_time() {
@@ -199,4 +214,12 @@ pub fn get_switch_time_count_us() -> usize {
 
 pub fn metric_sys_call(id: usize) {
     TASK_MANAGER.metric_sys_call(id);
+}
+
+pub fn current_user_token() -> usize {
+    TASK_MANAGER.get_current_token()
+}
+
+pub fn current_trap_cx() -> &'static mut TrapContext {
+    TASK_MANAGER.get_current_trap_cx()
 }

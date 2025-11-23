@@ -6,6 +6,17 @@ pub mod memory_set;
 
 pub use heap_allocator::init_heap;
 pub use address::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum, VPNRange};
-pub use page_table::{PTEFlags, PageTableEntry};
+pub use page_table::{PTEFlags, PageTableEntry, translated_byte_buffer};
 pub use frame_allocator::{init_frame_allocator, FrameTracker};
 pub use memory_set::{KERNEL_SPACE};
+
+/*
+用户的虚拟地址是连续的，但物理地址却可能不连续
+*/
+pub fn user_data_copy(token: usize, dst: *const u8, mut src: *const u8, len: usize) {
+    let buffer = translated_byte_buffer(token, dst, len);
+    for d in buffer {
+        d.copy_from_slice(unsafe {core::slice::from_raw_parts(src, d.len())});
+        src = unsafe { src.add(d.len()) };
+    }
+}

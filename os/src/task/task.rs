@@ -2,7 +2,7 @@ use core::fmt::Display;
 
 use os_common::{syscall_list};
 
-use crate::{info, kernel, loader::{get_base_i, init_app_cx}, task::context::TaskContext, utils::Address};
+use crate::{config::{TRAP_CONTEXT, kernel_stack_position}, info, kernel, mm::{KERNEL_SPACE, PhysPageNum, VirtAddr, memory_set::{MapPermission, MemorySet}}, task::context::TaskContext, trap::{context::TrapContext, trap_handler}, utils::Address};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum TaskStatus {
@@ -12,10 +12,18 @@ pub enum TaskStatus {
     Exited,
 }
 
-#[derive(Clone, Copy)]
 pub struct TaskControlBlock {
     pub status: TaskStatus,
     pub cx: TaskContext,
+
+    pub memory_set: MemorySet,
+    /*
+    * app的TrapContext所在的物理页
+    * 因为应用被分配的所有frame都是位于内核中（ekernel ~ MEMORY_END），
+    * 且内核数据使用的是Identical映射方式，所以可以通过trap_cx_ppn直接读取对应位置的数据
+    */
+    pub trap_cx_ppn: PhysPageNum,
+    pub base_size: usize,
 
     app_range: (usize, usize),
     pub app_name: &'static str,
@@ -43,17 +51,35 @@ impl TaskControlBlock {
             panic!("[kernel] invalid app range: [{}, {})", self.app_range.0, self.app_range.1);
         }
 
+        let elf = self.get_app_data();
+        let (user_sp, entry_point) = self.memory_set.load_elf(elf);
+        let trap_cx_ppn = self.memory_set
+            .translate(VirtAddr::from(TRAP_CONTEXT).into())
+            .unwrap()
+            .ppn();
+        let (kernel_stack_bottom, kernel_stack_top) = kernel_stack_position(app_id);
+        KERNEL_SPACE.exclusive_access()
+            .insert_framed_area(
+                kernel_stack_bottom.into(), 
+                kernel_stack_top.into(), 
+                MapPermission::W | MapPermission::R,
+            );
         
-        let dst_addr = get_base_i(app_id);
-        let size = self.app_size();
-        unsafe {
-            let src = core::slice::from_raw_parts(self.app_range.0 as *const u8, size);
-            let dst = core::slice::from_raw_parts_mut(dst_addr as *mut u8, size);
-            dst.copy_from_slice(src);
-        }
-        self.cx = TaskContext::ret_to_restore(init_app_cx(app_id));
+        self.trap_cx_ppn = trap_cx_ppn;
+        self.base_size = user_sp;
+        self.cx = TaskContext::goto_trap_return(kernel_stack_top);
         self.status = TaskStatus::Ready;
-        info!("[kernel] load app {} from (.data)[0x{:0x}, 0x{:0x}) to kernel (.text)[0x{:0x}, 0x{:0x})", self.app_name, self.app_range.0, self.app_range.1, dst_addr, dst_addr+size);
+
+        let trap_cx = self.get_trap_context();
+        *trap_cx = TrapContext::init(
+            entry_point, 
+            user_sp, 
+            KERNEL_SPACE.exclusive_access().token(),
+            kernel_stack_top,
+            trap_handler as usize,
+        );
+
+        info!("[kernel] start app {} from (.data)[{:#x}, {:#x})", self.app_name, self.app_range.0, self.app_range.1);
     }
 
     fn app_size(&self) -> usize {
@@ -84,10 +110,15 @@ impl TaskControlBlock {
         };
     }
 
-    pub fn get_app_data(&self) -> &'static [u8] {
+    fn get_app_data(&self) -> &'static [u8] {
         unsafe {
             core::slice::from_raw_parts(self.app_range.0 as *const u8, self.app_size())
         }
+    }
+
+    // 我这里将TrapContext作为栈来使用，所以放在了page的最后部分
+    pub fn get_trap_context(&self) -> &'static mut TrapContext {
+        self.trap_cx_ppn.get_mut_from_back::<TrapContext>()
     }
 }
 
@@ -96,6 +127,9 @@ impl Default for TaskControlBlock {
         Self {
             status: TaskStatus::UnInit,
             cx: TaskContext::zero_init(),
+            memory_set: MemorySet::new_bare(),
+            trap_cx_ppn: 0.into(),
+            base_size: 0,
 
             app_range: (0, 0),
             app_name: "",

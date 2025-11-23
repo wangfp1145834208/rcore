@@ -1,7 +1,9 @@
+use core::cmp::min;
+
 use alloc::vec::Vec;
 use bitflags::*;
 
-use crate::{config::PAGE_SIZE_BITS, info, mm::{PhysPageNum, VirtPageNum, frame_allocator::{FrameTracker, frame_alloc}}};
+use crate::mm::{PhysPageNum, VirtAddr, VirtPageNum, frame_allocator::{FrameTracker, frame_alloc}};
 
 const PTE_PPN_OFFSET: usize = 10;
 
@@ -134,6 +136,7 @@ impl PageTable {
         (8usize << 60) | self.root.0
     }
 
+    #[allow(unused)]
     pub fn from_token(satp: usize) -> Self {
         Self {
             root: satp.into(),
@@ -145,4 +148,27 @@ impl PageTable {
         self.find_pte(vpn)
             .map(|pte| pte.clone())
     }
+}
+
+pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&'static mut [u8]> {
+    let page_table = PageTable::from_token(token);
+    let mut start = ptr as usize;
+    let end = start + len;
+    let mut s = Vec::new();
+    while start < end {
+        let start_va = VirtAddr(start);
+        let vpn = start_va.floor();
+        let ppn = page_table
+            .translate(vpn)
+            .unwrap()
+            .ppn();
+        let end_va: VirtAddr = min((vpn + 1).into(), end.into());
+        if end_va.page_offset() == 0 {
+            s.push(&mut ppn.get_bytes_array()[start_va.page_offset()..]);
+        } else {
+            s.push(&mut ppn.get_bytes_array()[start_va.page_offset()..end_va.page_offset()]);
+        }
+        start = end_va.into();
+    }
+    s
 }
